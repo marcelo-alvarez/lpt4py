@@ -1,5 +1,5 @@
 # lpt4py
-Initial conditions and Lagrangian perturbation theory in Python with mpi4py.
+Massively parallel GPU-enabled initial conditions and Lagrangian perturbation theory in Python using [jax.]numpy.
 
 ## Installation
 1. git clone https://github.com/marcelo-alvarez/lpt4py.git
