@@ -17,7 +17,7 @@ class Grid:
     def generate_noise(self, noisetype='white', nsub=1024**3, seed=13579):
 
         N = self.N
-        stream = sr.stream.stream(seed=seed,nsub=nsub)
+        stream = sr.Stream(seed=seed,nsub=nsub)
 
         noise = stream.generate(start=0,size=N**3)
         noise = jnp.reshape(noise,(N,N,N))
