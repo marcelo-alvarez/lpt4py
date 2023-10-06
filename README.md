@@ -9,40 +9,35 @@ Massively parallel GPU-enabled initial conditions and Lagrangian perturbation th
 ## Running
 Currently runs on perlmutter in the [xgsmenv](https://github.com/marcelo-alvarez/xgsmenv) enviroment.
 
-Example included here in [scripts/example.py](https://github.com/marcelo-alvarez/lpt4py/blob/master/scripts/example.py) will generate white noise for a 512^3 grid.
-
-```
-import jax
-import lpt4py as lpt
-from mpi4py import MPI
-
-parallel = False
-nproc    = MPI.COMM_WORLD.Get_size()
-mpiproc  = MPI.COMM_WORLD.Get_rank()
-if MPI.COMM_WORLD.Get_size() > 1: parallel = True
-
-if not parallel:
-    grid = lpt.Grid(N=512,partype=None)
-else:
-    jax.distributed.initialize()
-    grid = lpt.Grid(N=512)
-
-
-wn = grid.generate_noise(seed=12345)
-
-if mpiproc==0:
-    print(f"[{mpiproc}] wn[0,0,0]={wn[0,0,0]}")
-if mpiproc==nproc-1:
-    print(f"[{mpiproc}] wn[-1,-1,-1]={wn[-1,-1,-1]}")
-```
-i.e.:
+Example included here in [scripts/example.py](https://github.com/marcelo-alvarez/lpt4py/blob/master/scripts/example.py) will generate and convolve white noise for a 2048^3 grid, i.e.:
 ```
 # on Perlmutter at NERSC
+% module use /global/cfs/cdirs/mp107/exgal/env/xgsmenv/20230615-0.0.1/modulefiles/
+% module load xgsmenv
 % salloc -N 2 -C gpu
-% srun -n 8 python -u scripts/example.py
-[7] wn[-1,-1,-1]=1.010379433631897
-[0] wn[0,0,0]=1.0800635814666748
-% python -u scripts/example.py
-[0] wn[0,0,0]=1.0800635814666748
-[0] wn[-1,-1,-1]=1.010379433631897
+% export XGSMENV_NGPUS=8
+% srun -n 8 python scripts/example.py --N 2048 --seed 13579
+srun -n 8 python /global/cfs/cdirs/mp107/exgal/users/malvarez/lpt4py/scripts/example.py --N 2048 --seed 13579
+MPI process 7: 2.537362 sec for noise generation
+MPI process 6: 2.538222 sec for noise generation
+MPI process 1: 2.541720 sec for noise generation
+MPI process 2: 2.540831 sec for noise generation
+MPI process 4: 2.542431 sec for noise generation
+MPI process 0: 2.543452 sec for noise generation
+[0] shape of cube.noise: (512, 64, 512)
+MPI process 3: 2.541479 sec for noise generation
+MPI process 5: 2.545826 sec for noise generation
+[7] noise[-1,-1,-1]=0.47201836109161377
+[0] noise[0,0,0]=-1.6708143949508667
+MPI process 0: 3.486865 sec for noise convolution
+MPI process 1: 3.488407 sec for noise convolution
+MPI process 6: 3.492072 sec for noise convolution
+MPI process 3: 3.486915 sec for noise convolution
+MPI process 2: 3.487583 sec for noise convolution
+MPI process 7: 3.493012 sec for noise convolution
+[0] shape of cube.delta: (512, 64, 512)
+MPI process 4: 3.487171 sec for noise convolution
+MPI process 5: 3.484784 sec for noise convolution
+[0] delta[0,0,0]=-1.670815110206604
+[7] delta[-1,-1,-1]=0.4720168709754944
 ```
