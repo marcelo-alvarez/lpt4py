@@ -12,15 +12,37 @@ Currently runs on perlmutter in the [xgsmenv](https://github.com/marcelo-alvarez
 Example included here in [scripts/example.py](https://github.com/marcelo-alvarez/lpt4py/blob/master/scripts/example.py) will generate white noise for a 512^3 grid.
 
 ```
+import jax
 import lpt4py as lpt
+from mpi4py import MPI
 
-# create grid object
-grid = lpt.Grid(N=512)
+parallel = False
+nproc    = MPI.COMM_WORLD.Get_size()
+mpiproc  = MPI.COMM_WORLD.Get_rank()
+if MPI.COMM_WORLD.Get_size() > 1: parallel = True
 
-# create white noise
-wn = grid.generate_noise(noisetype='white')
+if not parallel:
+    grid = lpt.Grid(N=512,partype=None)
+else:
+    jax.distributed.initialize()
+    grid = lpt.Grid(N=512)
 
-print('wn',wn)
-print('wn shape:',wn.shape)
-print('wn mean:',wn.mean())
+
+wn = grid.generate_noise(seed=12345)
+
+if mpiproc==0:
+    print(f"[{mpiproc}] wn[0,0,0]={wn[0,0,0]}")
+if mpiproc==nproc-1:
+    print(f"[{mpiproc}] wn[-1,-1,-1]={wn[-1,-1,-1]}")
+```
+i.e.:
+```
+# on Perlmutter at NERSC
+% salloc -N 2 -C gpu
+% srun -n 8 python -u scripts/example.py
+[7] wn[-1,-1,-1]=1.010379433631897
+[0] wn[0,0,0]=1.0800635814666748
+% python -u scripts/example.py
+[0] wn[0,0,0]=1.0800635814666748
+[0] wn[-1,-1,-1]=1.010379433631897
 ```
