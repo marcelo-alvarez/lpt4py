@@ -1,10 +1,22 @@
+import jax
 import lpt4py as lpt
+from mpi4py import MPI
 
-# create grid object
-grid = lpt.Grid(N=512)
+parallel = False
+nproc    = MPI.COMM_WORLD.Get_size()
+mpiproc  = MPI.COMM_WORLD.Get_rank()
+if MPI.COMM_WORLD.Get_size() > 1: parallel = True
 
-# create white noise
+if not parallel:
+    grid = lpt.Grid(N=512,partype=None)  
+else:
+    jax.distributed.initialize()
+    grid = lpt.Grid(N=512)
+
+
 wn = grid.generate_noise(seed=12345)
 
-print('wn shape:',wn.shape)
-print('wn mean:',wn.mean())
+if mpiproc==0:
+    print(f"[{mpiproc}] wn[0,0,0]={wn[0,0,0]}")
+if mpiproc==nproc-1:
+    print(f"[{mpiproc}] wn[-1,-1,-1]={wn[-1,-1,-1]}")
