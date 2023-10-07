@@ -14,7 +14,6 @@ class Cube:
         self.N       = kwargs.get('N',512)
         self.partype = kwargs.get('partype','jaxshard')
 
-        self.noise = None
         self.delta = None
         self.s1lpt = None
         self.s2lpt = None
@@ -39,19 +38,19 @@ class Cube:
         end     = self.end
 
         stream = sr.Stream(seed=seed,nsub=nsub)
-        noise = stream.generate(start=start*N**2,size=(end-start)*N**2)
+        noise = stream.generate(start=start*N**2,size=(end-start)*N**2).astype(jnp.float32)
         noise = jnp.reshape(noise,(end-start,N,N))
         return jnp.transpose(noise,(1,0,2)) 
 
     def _generate_serial_noise(self, N, noisetype, seed, nsub):
         stream = sr.Stream(seed=seed,nsub=nsub)
-        noise = stream.generate(start=0,size=N**3)
+        noise = stream.generate(start=0,size=N**3).astype(jnp.float32)
         noise = jnp.reshape(noise,(N,N,N))
         return jnp.transpose(noise,(1,0,2))
 
     def _get_grid_transfer_function(self):
         # currently identity transfer function as a placeholder
-        return jnp.zeros(self.cshape_local)+1.0
+        return (jnp.zeros(self.cshape_local)+1.0).astype(jnp.float32)
 
     def _fft(self,x_np,direction='r2c'):
         
@@ -106,12 +105,49 @@ class Cube:
 
         noise = None
         if self.partype is None:
-            self.noise = self._generate_serial_noise(N, noisetype, seed, nsub)
+            self.delta = self._generate_serial_noise(N, noisetype, seed, nsub)
         elif self.partype == 'jaxshard':
-            self.noise = self._generate_sharded_noise(N, noisetype, seed, nsub)
+            self.delta = self._generate_sharded_noise(N, noisetype, seed, nsub)
 
-    def convolve_noise(self):
-        self.delta = self._fft(self.noise)
-        transfer = self._get_grid_transfer_function()
-        self.delta = transfer * self.delta
+    def noise2delta(self):
+        self.delta = self._fft(self.delta)
+        self.delta = self._get_grid_transfer_function()*self.delta
         self.delta = self._fft(self.delta,direction='c2r')
+
+    def noise2slpt(self):
+
+        # FT of delta from noise
+        self.delta = self._fft(self.delta)*self._get_grid_matter_transfer_function()
+        
+        # calculate delta2
+        self.sxx = self._fft(self._kx()*self._kx()/self._k2()*self.delta,direction='c2r')
+        self.syy = self._fft(self._ky()*self._ky()/self._k2()*self.delta,direction='c2r')
+        self.delta2  = self.sxx * self.syy 
+
+        self.szz = self._fft(self._kz()*self._kz()/self._k2()*self.delta,direction='c2r')
+        self.delta2 += self.sxx * self.szz ; del self.sxx 
+        self.delta2 += self.syy * self.szz ; del self.syy ; del self.szz 
+
+        self.sxy = self._fft(self._kx()*self._ky()/self._k2()*self.delta,direction='c2r')
+        self.delta2 += self.sxy * self.sxy ; del self.sxy
+
+        self.sxz = self._fft(self._kx()*self._kz()/self._k2()*self.delta,direction='c2r')
+        self.delta2 += self.sxz * self.sxz ; del self.sxz
+
+        self.syz = self._fft(self._ky()*self._kz()/self._k2()*self.delta,direction='c2r')
+        self.delta2 += self.syz * self.syz ; del self.syz
+
+        # FT delta2
+        self.delta2 = self._fft(self.delta2)
+
+        # 2nd order displacements
+        self.sx2 = self._fft((0+j)*self._kx/self._k2()*self._delta2,direction='c2r')
+        self.sy2 = self._fft((0+j)*self._ky/self._k2()*self._delta2,direction='c2r')
+        self.sz2 = self._fft((0+j)*self._kz/self._k2()*self._delta2,direction='c2r')
+        del self._delta2
+
+        # 1st order displacements
+        self.sx1 = self._fft((0+j)*self._kx/self._k2()*self._delta2,direction='c2r')
+        self.sy1 = self._fft((0+j)*self._ky/self._k2()*self._delta2,direction='c2r')
+        self.sz2 = self._fft((0+j)*self._kz/self._k2()*self._delta2,direction='c2r')        
+

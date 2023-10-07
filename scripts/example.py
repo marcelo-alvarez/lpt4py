@@ -5,6 +5,8 @@ import argparse
 import sys
 from time import time
 
+jax.config.update("jax_enable_x64", True)
+
 def myprint(*args,**kwargs):
     print("".join(map(str,args)),**kwargs);  sys.stdout.flush()
 
@@ -46,23 +48,27 @@ times={'t0' : time()}
 task_tag = "MPI process "+str(mpiproc)
 
 cube.generate_noise(seed=seed)
-times = _profiletime(task_tag, 'noise generation', times)
 
 if mpiproc==0:
-    myprint(f"[{mpiproc}] shape of cube.noise: {cube.noise.shape}")
-    myprint(f"[{mpiproc}] noise[0,0,0]={cube.noise[0,0,0]}")
+    myprint(f"[{mpiproc}] shape of noise is {cube.delta.shape}")
+    myprint(f"[{mpiproc}] noise[0,0,0]={cube.delta[0,0,0]}")
 if mpiproc==nproc-1:
-    myprint(f"[{mpiproc}] noise[-1,-1,-1]={cube.noise[-1,-1,-1]}")
+    myprint(f"[{mpiproc}] noise[-1,-1,-1]={cube.delta[-1,-1,-1]}")
 
 MPI.COMM_WORLD.Barrier()
-
-cube.convolve_noise()
-times = _profiletime(task_tag, 'noise convolution', times)
-
-MPI.COMM_WORLD.Barrier()
+if mpiproc==0: 
+    times = _profiletime(task_tag, 'noise generation', times)
+    myprint("")
+    
+cube.noise2delta()
 
 if mpiproc==0:
-    myprint(f"[{mpiproc}] shape of cube.delta: {cube.delta.shape}")
+    myprint(f"[{mpiproc}] shape of delta is {cube.delta.shape}")
     myprint(f"[{mpiproc}] delta[0,0,0]={cube.delta[0,0,0]}")
 if mpiproc==nproc-1:
     myprint(f"[{mpiproc}] delta[-1,-1,-1]={cube.delta[-1,-1,-1]}")
+
+MPI.COMM_WORLD.Barrier()
+if mpiproc==0:
+    times = _profiletime(task_tag, 'noise convolution', times)
+    myprint("")
