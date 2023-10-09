@@ -16,28 +16,22 @@ Example included here in [scripts/example.py](https://github.com/marcelo-alvarez
 % module load xgsmenv
 % salloc -N 2 -C gpu
 % export XGSMENV_NGPUS=8
-% srun -n 8 python scripts/example.py --N 2048 --seed 13579
-srun -n 8 python /global/cfs/cdirs/mp107/exgal/users/malvarez/lpt4py/scripts/example.py --N 2048 --seed 13579
-MPI process 7: 2.537362 sec for noise generation
-MPI process 6: 2.538222 sec for noise generation
-MPI process 1: 2.541720 sec for noise generation
-MPI process 2: 2.540831 sec for noise generation
-MPI process 4: 2.542431 sec for noise generation
-MPI process 0: 2.543452 sec for noise generation
-[0] shape of cube.noise: (512, 64, 512)
-MPI process 3: 2.541479 sec for noise generation
-MPI process 5: 2.545826 sec for noise generation
-[7] noise[-1,-1,-1]=0.47201836109161377
+% srun -n 4 python /global/cfs/cdirs/mp107/exgal/users/malvarez/lpt4py/scripts/example.py --N 768 --seed 13579
+[3] noise[-1,-1,-1]=-1.2530277967453003
+[0] shape of noise is (768, 192, 768)
 [0] noise[0,0,0]=-1.6708143949508667
-MPI process 0: 3.486865 sec for noise convolution
-MPI process 1: 3.488407 sec for noise convolution
-MPI process 6: 3.492072 sec for noise convolution
-MPI process 3: 3.486915 sec for noise convolution
-MPI process 2: 3.487583 sec for noise convolution
-MPI process 7: 3.493012 sec for noise convolution
-[0] shape of cube.delta: (512, 64, 512)
-MPI process 4: 3.487171 sec for noise convolution
-MPI process 5: 3.484784 sec for noise convolution
-[0] delta[0,0,0]=-1.670815110206604
-[7] delta[-1,-1,-1]=0.4720168709754944
+MPI process 0: 1.338984 sec for noise generation
+
+[0] shape of delta is (768, 192, 768)
+[0] delta[0,0,0]=-1.6708143949508667
+[3] delta[-1,-1,-1]=-1.253028154373169
+MPI process 0: 2.544447 sec for noise convolution
+
+[0] sx1[0,0,0]=5.488100766589582
+[0] sy1[0,0,0]=6.761213949848777
+[0] sz1[0,0,0]=4.207604505677209
+[0] sx2[0,0,0]=0.8204334739641417
+[0] sy2[0,0,0]=-0.9351435481275336
+[0] sz2[0,0,0]=0.4561066162034884
+MPI process 0: 9.779000 sec for 2LPT
 ```
