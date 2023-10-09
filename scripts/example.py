@@ -47,19 +47,21 @@ times={'t0' : time()}
 
 task_tag = "MPI process "+str(mpiproc)
 
+#### NOISE GENERATION
 cube.generate_noise(seed=seed)
 
 if mpiproc==0:
-    myprint(f"[{mpiproc}] shape of noise is {cube.delta.shape}")
-    myprint(f"[{mpiproc}] noise[0,0,0]={cube.delta[0,0,0]}")
+    myprint(f"[{mpiproc}] shape of noise is {cube.noise.shape}")
+    myprint(f"[{mpiproc}] noise[0,0,0]={cube.noise[0,0,0]}")
 if mpiproc==nproc-1:
-    myprint(f"[{mpiproc}] noise[-1,-1,-1]={cube.delta[-1,-1,-1]}")
+    myprint(f"[{mpiproc}] noise[-1,-1,-1]={cube.noise[-1,-1,-1]}")
 
 MPI.COMM_WORLD.Barrier()
 if mpiproc==0: 
     times = _profiletime(task_tag, 'noise generation', times)
     myprint("")
     
+#### NOISE CONVOLUTION TO OBTAIN DELTA
 cube.noise2delta()
 
 if mpiproc==0:
@@ -71,4 +73,20 @@ if mpiproc==nproc-1:
 MPI.COMM_WORLD.Barrier()
 if mpiproc==0:
     times = _profiletime(task_tag, 'noise convolution', times)
+    myprint("")
+
+#### 2LPT DISPLACEMENTS FROM EXTERNAL (WEBSKY AT 768^3) DENSITY CONTRAST
+cube.slpt(infield='/global/cfs/cdirs/sobs/www/users/websky/ICs/Fvec_7700Mpc_n6144_nb30_nt16_no768')
+
+if mpiproc==0:
+    myprint(f"[{mpiproc}] sx1[0,0,0]={cube.sx1[0,0,0]}")
+    myprint(f"[{mpiproc}] sy1[0,0,0]={cube.sy1[0,0,0]}")
+    myprint(f"[{mpiproc}] sz1[0,0,0]={cube.sz1[0,0,0]}")
+    myprint(f"[{mpiproc}] sx2[0,0,0]={cube.sx2[0,0,0]}")
+    myprint(f"[{mpiproc}] sy2[0,0,0]={cube.sy2[0,0,0]}")
+    myprint(f"[{mpiproc}] sz2[0,0,0]={cube.sz2[0,0,0]}")
+
+MPI.COMM_WORLD.Barrier()
+if mpiproc==0:
+    times = _profiletime(task_tag, '2LPT', times)
     myprint("")

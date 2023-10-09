@@ -12,6 +12,7 @@ class Cube:
     def __init__(self, **kwargs):
 
         self.N       = kwargs.get('N',512)
+        self.Lbox    = kwargs.get('Lbox',7700.0)
         self.partype = kwargs.get('partype','jaxshard')
 
         self.delta = None
@@ -23,13 +24,37 @@ class Cube:
         self.rshape_local = (self.N,self.N,self.N)
         self.cshape_local = (self.N,self.N,self.N//2+1)
 
+        self.start = 0
+        self.end   = self.N
+
         if self.partype == 'jaxshard':
             self.ngpus   = int(os.environ.get("XGSMENV_NGPUS"))
             self.host_id = jax.process_index()
             self.start   = self.host_id * self.N // self.ngpus
             self.end     = (self.host_id + 1) * self.N // self.ngpus
             self.rshape_local = (self.N, self.N // self.ngpus, self.N)
-            self.cshape_local = (self.N, self.N // self.ngpus, self.N // 2 + 1)          
+            self.cshape_local = (self.N, self.N // self.ngpus, self.N // 2 + 1)
+
+        k0 = 2*jnp.pi/self.Lbox*self.N
+        self.kx = jnp.fft.fftfreq(self.N) * k0
+        self.ky = jnp.fft.fftfreq(self.N) * k0
+        self.ky = self.ky[self.start:self.end]
+        self.kz = jnp.fft.rfftfreq(self.N) * k0
+
+        kxa,kya,kza = jnp.meshgrid(self.kx,self.ky,self.kz,indexing='ij')
+
+        self.k2 = kxa**2+kya**2+kza**2
+        self.kx = self.kx.at[self.N//2].set(0.0)
+        self.kz = self.kz.at[-1].set(0.0)
+
+        if self.start <= self.N//2 and self.end > self.N//2: 
+            self.ky = self.ky.at[self.N//2-self.start].set(0.0)
+
+        self.kx = self.kx[:,None,None]
+        self.ky = self.ky[None,:,None]
+        self.kz = self.kz[None,None,:]
+
+        self.index0 = jnp.nonzero(self.k2==0.0)
 
     def _generate_sharded_noise(self, N, noisetype, seed, nsub):           
         ngpus   = self.ngpus
@@ -105,49 +130,76 @@ class Cube:
 
         noise = None
         if self.partype is None:
-            self.delta = self._generate_serial_noise(N, noisetype, seed, nsub)
+            self.noise = self._generate_serial_noise(N, noisetype, seed, nsub)
         elif self.partype == 'jaxshard':
-            self.delta = self._generate_sharded_noise(N, noisetype, seed, nsub)
+            self.noise = self._generate_sharded_noise(N, noisetype, seed, nsub)
 
     def noise2delta(self):
-        self.delta = self._fft(self.delta)
+        self.delta = self._fft(self.noise)
         self.delta = self._get_grid_transfer_function()*self.delta
         self.delta = self._fft(self.delta,direction='c2r')
 
-    def noise2slpt(self):
+    def slpt(self, infield='noise'):
 
-        # FT of delta from noise
-        self.delta = self._fft(self.delta)*self._get_grid_matter_transfer_function()
+        def _get_shear_factor(ki,kj):
+            arr = ki*kj/self.k2*self.delta
+            if self.host_id == 0: 
+                arr = arr.at[self.index0].set(0.0+0.0j)
+            arr = self._fft(arr,direction='c2r')
+            return arr
         
+        def _delta_to_s2(ki,delta):
+            arr = (0+1j)*ki/self.k2*delta
+            if self.host_id == 0: 
+                arr = arr.at[self.index0].set(0.0+0.0j)
+            arr = self._fft(arr,direction='c2r')
+            return arr
+
+        if infield == 'noise':
+            # FT of delta from noise
+            self.delta = self._fft(self.noise)*self._get_grid_transfer_function()
+            del self.noise
+        elif infield == 'delta':
+            # FT of delta
+            self.delta = self._fft(self.delta)
+        else:
+            import numpy as np
+            # delta from external file
+            self.delta = jnp.asarray(np.fromfile(infield,dtype=jnp.float32,count=self.N*self.N*self.N))
+            self.delta = jnp.reshape(self.delta,self.rshape)
+            self.delta = self.delta[:,self.start:self.end,:]
+            # FT of delta
+            self.delta = self._fft(self.delta)
+    
         # calculate delta2
-        self.sxx = self._fft(self._kx()*self._kx()/self._k2()*self.delta,direction='c2r')
-        self.syy = self._fft(self._ky()*self._ky()/self._k2()*self.delta,direction='c2r')
+        self.sxx = _get_shear_factor(self.kx,self.ky)
+        self.syy = _get_shear_factor(self.kx,self.ky)
         self.delta2  = self.sxx * self.syy 
 
-        self.szz = self._fft(self._kz()*self._kz()/self._k2()*self.delta,direction='c2r')
+        self.szz = _get_shear_factor(self.kz,self.kz)
         self.delta2 += self.sxx * self.szz ; del self.sxx 
         self.delta2 += self.syy * self.szz ; del self.syy ; del self.szz 
 
-        self.sxy = self._fft(self._kx()*self._ky()/self._k2()*self.delta,direction='c2r')
+        self.sxy = _get_shear_factor(self.kx,self.ky)
         self.delta2 += self.sxy * self.sxy ; del self.sxy
 
-        self.sxz = self._fft(self._kx()*self._kz()/self._k2()*self.delta,direction='c2r')
+        self.sxz = _get_shear_factor(self.kx,self.kz)
         self.delta2 += self.sxz * self.sxz ; del self.sxz
 
-        self.syz = self._fft(self._ky()*self._kz()/self._k2()*self.delta,direction='c2r')
+        self.syz = _get_shear_factor(self.ky,self.kz)
         self.delta2 += self.syz * self.syz ; del self.syz
 
         # FT delta2
         self.delta2 = self._fft(self.delta2)
 
-        # 2nd order displacements
-        self.sx2 = self._fft((0+j)*self._kx/self._k2()*self._delta2,direction='c2r')
-        self.sy2 = self._fft((0+j)*self._ky/self._k2()*self._delta2,direction='c2r')
-        self.sz2 = self._fft((0+j)*self._kz/self._k2()*self._delta2,direction='c2r')
-        del self._delta2
-
         # 1st order displacements
-        self.sx1 = self._fft((0+j)*self._kx/self._k2()*self._delta2,direction='c2r')
-        self.sy1 = self._fft((0+j)*self._ky/self._k2()*self._delta2,direction='c2r')
-        self.sz2 = self._fft((0+j)*self._kz/self._k2()*self._delta2,direction='c2r')        
+        self.sx1 = _delta_to_s2(self.kx,self.delta)
+        self.sy1 = _delta_to_s2(self.ky,self.delta)
+        self.sz1 = _delta_to_s2(self.kz,self.delta)
+
+        # 2nd order displacements
+        self.sx2 = _delta_to_s2(self.kx,self.delta2)
+        self.sy2 = _delta_to_s2(self.ky,self.delta2)
+        self.sz2 = _delta_to_s2(self.kz,self.delta2)
+    
 
