@@ -9,7 +9,7 @@ Massively parallel GPU-enabled initial conditions and Lagrangian perturbation th
 ## Running
 Currently runs on perlmutter in the [xgsmenv](https://github.com/marcelo-alvarez/xgsmenv) enviroment.
 
-Example included here in [scripts/example.py](https://github.com/marcelo-alvarez/lpt4py/blob/master/scripts/example.py) will generate and convolve white noise for a 2048^3 grid, i.e.:
+Example included here in [scripts/example.py](https://github.com/marcelo-alvarez/lpt4py/blob/master/scripts/example.py) will generate/convolve white noise and calculate 2LPT displacement from an external density contrast (websky), all at 768^3, i.e.:
 ```
 # on Perlmutter at NERSC
 % module use /global/cfs/cdirs/mp107/exgal/env/xgsmenv/20230615-0.0.1/modulefiles/
