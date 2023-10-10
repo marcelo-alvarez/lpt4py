@@ -1,5 +1,6 @@
 #!/bin/bash
 
 mv lpt4py lpt4py$USER
+cp setup.py setup_origin.py
 cp setup_local.py setup.py
 pip install .

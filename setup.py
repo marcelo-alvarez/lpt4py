@@ -6,5 +6,5 @@ setup(name=pname,
       url='http://github.com/marcelo-alvarez/lpt4py',
       author='Marcelo Alvarez',
       license_files = ('LICENSE',),
-      packages=['lpt4py'],
+      packages=[pname],
       zip_safe=False)
