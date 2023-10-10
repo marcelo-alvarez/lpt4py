@@ -1,0 +1,5 @@
+#!/bin/bash
+
+mv lpt4py lpt4py$USER
+cp setup_local.py setup.py
+pip install .

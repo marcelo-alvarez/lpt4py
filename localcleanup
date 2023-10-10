@@ -1,0 +1,4 @@
+#!/bin/bash
+
+mv lpt4py$USER lpt4py
+cp setup_origin.py setup.py
