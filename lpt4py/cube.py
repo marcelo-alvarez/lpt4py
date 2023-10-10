@@ -148,7 +148,11 @@ class Cube:
             arr = self._fft(arr,direction='c2r')
             return arr
 
-        def _delta_to_s2(ki,delta):
+        def _delta_to_s(ki,delta):
+            # convention:
+            #   Y_k = Sum_j=0^n-1 [ X_j * e^(- 2pi * sqrt(-1) * j * k / n)]
+            # where
+            #   Y_k is complex transform of real X_j
             arr = (0+1j)*ki/self.k2*delta
             if self.host_id == 0: 
                 arr = arr.at[self.index0].set(0.0+0.0j)
@@ -171,35 +175,48 @@ class Cube:
             # FT of delta
             self.delta = self._fft(self.delta)
     
-        # calculate delta2
+        # sign convention for 2LPT
+        #   grad.S^(n) = - delta^(n)
+        # where
+        #   delta^(1) = linear density contrast
+        #   delta^(2) = Sum [ dSi/dqi * dSj/dqj - (dSi/dqj)^2]
+        #   x(q) = q + D * S^(1) + f * D^2 * S^(2)
+        # with
+        #   f = + 3/7 Omegam_m^(-1/143)
+        # being a good approximation for a flat universe
+
         self.sxx = _get_shear_factor(self.kx,self.kx)
         self.syy = _get_shear_factor(self.ky,self.ky)
-        self.delta2  = - self.sxx * self.syy 
+        self.delta2  = self.sxx * self.syy
 
         self.szz = _get_shear_factor(self.kz,self.kz)
-        self.delta2 -= self.sxx * self.szz ; del self.sxx 
-        self.delta2 -= self.syy * self.szz ; del self.syy ; del self.szz 
+        self.delta2 += self.sxx * self.szz ; del self.sxx
+        self.delta2 += self.syy * self.szz ; del self.syy ; del self.szz
 
         self.sxy = _get_shear_factor(self.kx,self.ky)
-        self.delta2 += self.sxy * self.sxy ; del self.sxy
+        self.delta2 -= self.sxy * self.sxy ; del self.sxy
 
         self.sxz = _get_shear_factor(self.kx,self.kz)
-        self.delta2 += self.sxz * self.sxz ; del self.sxz
+        self.delta2 -= self.sxz * self.sxz ; del self.sxz
 
         self.syz = _get_shear_factor(self.ky,self.kz)
-        self.delta2 += self.syz * self.syz ; del self.syz
+        self.delta2 -= self.syz * self.syz ; del self.syz
 
         # FT delta2
         self.delta2 = self._fft(self.delta2)
 
+        # LPT coefficients s1 and s2 such that
+        #   x = s1 * D + s2 * f * D^2
+        # where D > 0 and f > 0.
+
         # 1st order displacements
-        self.sx1 = _delta_to_s2(self.kx,self.delta)
-        self.sy1 = _delta_to_s2(self.ky,self.delta)
-        self.sz1 = _delta_to_s2(self.kz,self.delta)
+        self.s1x = _delta_to_s(self.kx,self.delta)
+        self.s1y = _delta_to_s(self.ky,self.delta)
+        self.s1z = _delta_to_s(self.kz,self.delta)
 
         # 2nd order displacements
-        self.sx2 = _delta_to_s2(self.kx,self.delta2)
-        self.sy2 = _delta_to_s2(self.ky,self.delta2)
-        self.sz2 = _delta_to_s2(self.kz,self.delta2)
+        self.s2x = _delta_to_s(self.kx,self.delta2)
+        self.s2y = _delta_to_s(self.ky,self.delta2)
+        self.s2z = _delta_to_s(self.kz,self.delta2)
     
 

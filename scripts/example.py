@@ -79,12 +79,12 @@ if mpiproc==0:
 cube.slpt(infield='/global/cfs/cdirs/sobs/www/users/websky/ICs/Fvec_7700Mpc_n6144_nb30_nt16_no768')
 
 if mpiproc==0:
-    myprint(f"[{mpiproc}] sx1[0,0,0]={cube.sx1[0,0,0]}")
-    myprint(f"[{mpiproc}] sy1[0,0,0]={cube.sy1[0,0,0]}")
-    myprint(f"[{mpiproc}] sz1[0,0,0]={cube.sz1[0,0,0]}")
-    myprint(f"[{mpiproc}] sx2[0,0,0]={cube.sx2[0,0,0]}")
-    myprint(f"[{mpiproc}] sy2[0,0,0]={cube.sy2[0,0,0]}")
-    myprint(f"[{mpiproc}] sz2[0,0,0]={cube.sz2[0,0,0]}")
+    myprint(f"[{mpiproc}] s1z[0,0,0]={cube.s1x[0,0,0]}")
+    myprint(f"[{mpiproc}] s1y[0,0,0]={cube.s1y[0,0,0]}")
+    myprint(f"[{mpiproc}] s1z[0,0,0]={cube.s1z[0,0,0]}")
+    myprint(f"[{mpiproc}] s2x[0,0,0]={cube.s2x[0,0,0]}")
+    myprint(f"[{mpiproc}] s2y[0,0,0]={cube.s2y[0,0,0]}")
+    myprint(f"[{mpiproc}] s2z[0,0,0]={cube.s2z[0,0,0]}")
 
 MPI.COMM_WORLD.Barrier()
 if mpiproc==0:
