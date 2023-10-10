@@ -3,4 +3,5 @@
 mv lpt4py lpt4py$USER
 cp setup.py setup_origin.py
 cp setup_local.py setup.py
+sed -i -e "s/lpt4py/lpt4py$USER/g" scripts/example.py
 pip install .
