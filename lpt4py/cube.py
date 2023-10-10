@@ -147,7 +147,7 @@ class Cube:
                 arr = arr.at[self.index0].set(0.0+0.0j)
             arr = self._fft(arr,direction='c2r')
             return arr
-        
+
         def _delta_to_s2(ki,delta):
             arr = (0+1j)*ki/self.k2*delta
             if self.host_id == 0: 
@@ -172,13 +172,13 @@ class Cube:
             self.delta = self._fft(self.delta)
     
         # calculate delta2
-        self.sxx = _get_shear_factor(self.kx,self.ky)
-        self.syy = _get_shear_factor(self.kx,self.ky)
-        self.delta2  = self.sxx * self.syy 
+        self.sxx = _get_shear_factor(self.kx,self.kx)
+        self.syy = _get_shear_factor(self.ky,self.ky)
+        self.delta2  = - self.sxx * self.syy 
 
         self.szz = _get_shear_factor(self.kz,self.kz)
-        self.delta2 += self.sxx * self.szz ; del self.sxx 
-        self.delta2 += self.syy * self.szz ; del self.syy ; del self.szz 
+        self.delta2 -= self.sxx * self.szz ; del self.sxx 
+        self.delta2 -= self.syy * self.szz ; del self.syy ; del self.szz 
 
         self.sxy = _get_shear_factor(self.kx,self.ky)
         self.delta2 += self.sxy * self.sxy ; del self.sxy
