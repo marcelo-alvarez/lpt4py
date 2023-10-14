@@ -1,6 +1,7 @@
 import jax
 import sys
 import os
+import gc
 
 import scaleran as sr
 
@@ -15,7 +16,6 @@ class Cube:
         self.Lbox    = kwargs.get('Lbox',7700.0)
         self.partype = kwargs.get('partype','jaxshard')
 
-        self.delta = None
         self.s1lpt = None
         self.s2lpt = None
 
@@ -35,27 +35,6 @@ class Cube:
             self.rshape_local = (self.N, self.N // self.ngpus, self.N)
             self.cshape_local = (self.N, self.N // self.ngpus, self.N // 2 + 1)
 
-        k0 = 2*jnp.pi/self.Lbox*self.N
-        self.kx = jnp.fft.fftfreq(self.N) * k0
-        self.ky = jnp.fft.fftfreq(self.N) * k0
-        self.ky = self.ky[self.start:self.end]
-        self.kz = jnp.fft.rfftfreq(self.N) * k0
-
-        kxa,kya,kza = jnp.meshgrid(self.kx,self.ky,self.kz,indexing='ij')
-
-        self.k2 = kxa**2+kya**2+kza**2
-        self.kx = self.kx.at[self.N//2].set(0.0)
-        self.kz = self.kz.at[-1].set(0.0)
-
-        if self.start <= self.N//2 and self.end > self.N//2: 
-            self.ky = self.ky.at[self.N//2-self.start].set(0.0)
-
-        self.kx = self.kx[:,None,None]
-        self.ky = self.ky[None,:,None]
-        self.kz = self.kz[None,None,:]
-
-        self.index0 = jnp.nonzero(self.k2==0.0)
-
     def _generate_sharded_noise(self, N, noisetype, seed, nsub):           
         ngpus   = self.ngpus
         host_id = self.host_id
@@ -73,9 +52,9 @@ class Cube:
         noise = jnp.reshape(noise,(N,N,N))
         return jnp.transpose(noise,(1,0,2))
 
-    def _get_grid_transfer_function(self):
+    def _apply_grid_transfer_function(self,field):
         # currently identity transfer function as a placeholder
-        return (jnp.zeros(self.cshape_local)+1.0).astype(jnp.float32)
+        return field*(jnp.zeros(self.cshape_local)+1.0).astype(jnp.float32)
 
     def _fft(self,x_np,direction='r2c'):
         
@@ -94,31 +73,32 @@ class Cube:
         devices = mesh_utils.create_device_mesh((num_gpus,))
         mesh = Mesh(devices, axis_names=('gpus',))
         with mesh:
-            x_single = jax.device_put(x_np)
+            x_single = jax.device_put(x_np).block_until_ready()
+            del x_np ; gc.collect()
             xshard = jax.make_array_from_single_device_arrays(
                 global_shape,
                 NamedSharding(mesh, P(None, "gpus")),
-                [x_single])
-
-            rfftn_jit = jit(
-                multihost_rfft.rfftn,
-                in_shardings=(NamedSharding(mesh, P(None, "gpus"))),
-                out_shardings=(NamedSharding(mesh, P(None, "gpus")))
-            )
-            irfftn_jit = jit(
-                multihost_rfft.irfftn,
-                in_shardings=(NamedSharding(mesh, P(None, "gpus"))),
-                out_shardings=(NamedSharding(mesh, P(None, "gpus")))
-            )
+                [x_single]).block_until_ready()
+            del x_single ; gc.collect()
+            if direction=='r2c':
+                rfftn_jit = jit(
+                    multihost_rfft.rfftn,
+                    in_shardings=(NamedSharding(mesh, P(None, "gpus"))),
+                    out_shardings=(NamedSharding(mesh, P(None, "gpus")))
+                )
+            else:
+                irfftn_jit = jit(
+                    multihost_rfft.irfftn,
+                    in_shardings=(NamedSharding(mesh, P(None, "gpus"))),
+                    out_shardings=(NamedSharding(mesh, P(None, "gpus")))
+                )
             sync_global_devices("wait for compiler output")
 
             with jax.spmd_mode('allow_all'):
 
                 if direction=='r2c':
-                    rfftn_jit(xshard).block_until_ready()
                     out_jit: jax.Array = rfftn_jit(xshard).block_until_ready()
                 else:
-                    irfftn_jit(xshard).block_until_ready()
                     out_jit: jax.Array = irfftn_jit(xshard).block_until_ready()
                 sync_global_devices("loop")
                 local_out_subset = out_jit.addressable_data(0)
@@ -130,52 +110,73 @@ class Cube:
 
         noise = None
         if self.partype is None:
-            self.noise = self._generate_serial_noise(N, noisetype, seed, nsub)
+            noise = self._generate_serial_noise(N, noisetype, seed, nsub)
         elif self.partype == 'jaxshard':
-            self.noise = self._generate_sharded_noise(N, noisetype, seed, nsub)
+            noise = self._generate_sharded_noise(N, noisetype, seed, nsub)
+        return noise
 
-    def noise2delta(self):
-        self.delta = self._fft(self.noise)
-        self.delta = self._get_grid_transfer_function()*self.delta
-        self.delta = self._fft(self.delta,direction='c2r')
+    def noise2delta(self,delta):
+        return self._fft(
+                    self._apply_grid_transfer_function(self._fft(delta)),
+                    direction='c2r')
 
-    def slpt(self, infield='noise'):
+    def slpt(self, infield='noise', delta=None, mode='lean'):
 
-        def _get_shear_factor(ki,kj):
-            arr = ki*kj/self.k2*self.delta
+        k0 = 2*jnp.pi/self.Lbox*self.N
+        kx = (jnp.fft.fftfreq(self.N) * k0).astype(jnp.float32)
+        ky = (jnp.fft.fftfreq(self.N) * k0).astype(jnp.float32)
+        ky = (ky[self.start:self.end]).astype(jnp.float32)
+        kz = (jnp.fft.rfftfreq(self.N) * k0).astype(jnp.float32)
+
+        kxa,kya,kza = jnp.meshgrid(kx,ky,kz,indexing='ij')
+
+        k2 = (kxa**2+kya**2+kza**2).astype(jnp.float32)
+        del kxa, kya, kza ; gc.collect()
+        kx = kx.at[self.N//2].set(0.0)
+        kz = kz.at[-1].set(0.0)
+
+        if self.start <= self.N//2 and self.end > self.N//2:
+            ky = ky.at[self.N//2-self.start].set(0.0)
+
+        kx = kx[:,None,None]
+        ky = ky[None,:,None]
+        kz = kz[None,None,:]
+
+        index0 = jnp.nonzero(k2==0.0)
+
+        def _get_shear_factor(ki,kj,delta):
+            arr = ki*kj/k2*delta
             if self.host_id == 0: 
-                arr = arr.at[self.index0].set(0.0+0.0j)
-            arr = self._fft(arr,direction='c2r')
-            return arr
+                arr = arr.at[index0].set(0.0+0.0j)
+            return self._fft(arr,direction='c2r')
 
         def _delta_to_s(ki,delta):
             # convention:
             #   Y_k = Sum_j=0^n-1 [ X_j * e^(- 2pi * sqrt(-1) * j * k / n)]
             # where
             #   Y_k is complex transform of real X_j
-            arr = (0+1j)*ki/self.k2*delta
+            arr = (0+1j)*ki/k2*delta
             if self.host_id == 0: 
-                arr = arr.at[self.index0].set(0.0+0.0j)
+                arr = arr.at[index0].set(0.0+0.0j)
             arr = self._fft(arr,direction='c2r')
             return arr
 
         if infield == 'noise':
             # FT of delta from noise
-            self.delta = self._fft(self.noise)*self._get_grid_transfer_function()
-            del self.noise
+            delta = self._apply_grid_transfer_function(self._fft(delta))
         elif infield == 'delta':
             # FT of delta
-            self.delta = self._fft(self.delta)
+            delta = self._fft(delta)
         else:
             import numpy as np
             # delta from external file
-            self.delta = jnp.asarray(np.fromfile(infield,dtype=jnp.float32,count=self.N*self.N*self.N))
-            self.delta = jnp.reshape(self.delta,self.rshape)
-            self.delta = self.delta[:,self.start:self.end,:]
+            delta = jnp.asarray(np.fromfile(infield,dtype=jnp.float32,count=self.N*self.N*self.N))
+            delta = jnp.reshape(delta,self.rshape)
+            delta = delta[:,self.start:self.end,:]
             # FT of delta
-            self.delta = self._fft(self.delta)
+            delta = self._fft(delta)
     
-        # sign convention for 2LPT
+        # Definitions used for LPT
         #   grad.S^(n) = - delta^(n)
         # where
         #   delta^(1) = linear density contrast
@@ -185,38 +186,49 @@ class Cube:
         #   f = + 3/7 Omegam_m^(-1/143)
         # being a good approximation for a flat universe
 
-        self.sxx = _get_shear_factor(self.kx,self.kx)
-        self.syy = _get_shear_factor(self.ky,self.ky)
-        self.delta2  = self.sxx * self.syy
+        if mode == 'fast':
+            # minimize operations
+            sxx = _get_shear_factor(kx,kx,delta)
+            syy = _get_shear_factor(ky,ky,delta)
+            delta2  = sxx * syy
 
-        self.szz = _get_shear_factor(self.kz,self.kz)
-        self.delta2 += self.sxx * self.szz ; del self.sxx
-        self.delta2 += self.syy * self.szz ; del self.syy ; del self.szz
+            szz = _get_shear_factor(kz,kz,delta)
+            delta2 += sxx * szz ; del sxx; gc.collect()
+            delta2 += syy * szz ; del syy ; del szz; gc.collect()
 
-        self.sxy = _get_shear_factor(self.kx,self.ky)
-        self.delta2 -= self.sxy * self.sxy ; del self.sxy
+            sxy = _get_shear_factor(kx,ky,delta)
+            delta2 -= sxy * sxy ; del sxy; gc.collect()
 
-        self.sxz = _get_shear_factor(self.kx,self.kz)
-        self.delta2 -= self.sxz * self.sxz ; del self.sxz
+            sxz = _get_shear_factor(kx,kz,delta)
+            delta2 -= sxz * sxz ; del sxz; gc.collect()
 
-        self.syz = _get_shear_factor(self.ky,self.kz)
-        self.delta2 -= self.syz * self.syz ; del self.syz
+            syz = _get_shear_factor(ky,kz,delta)
+            delta2 -= syz * syz ; del syz; gc.collect()
 
-        # FT delta2
-        self.delta2 = self._fft(self.delta2)
-
-        # LPT coefficients s1 and s2 such that
-        #   x = s1 * D + s2 * f * D^2
-        # where D > 0 and f > 0.
-
-        # 1st order displacements
-        self.s1x = _delta_to_s(self.kx,self.delta)
-        self.s1y = _delta_to_s(self.ky,self.delta)
-        self.s1z = _delta_to_s(self.kz,self.delta)
+        else:
+            # minimize memory footprint
+            delta2  = self._fft(
+                    _get_shear_factor(kx,kx,delta)*_get_shear_factor(ky,ky,delta)
+                  + _get_shear_factor(kx,kx,delta)*_get_shear_factor(kz,kz,delta)
+                  + _get_shear_factor(ky,ky,delta)*_get_shear_factor(kz,kz,delta)
+                  - _get_shear_factor(kx,ky,delta)*_get_shear_factor(kx,ky,delta)
+                  - _get_shear_factor(kx,kz,delta)*_get_shear_factor(kx,kz,delta)
+                  - _get_shear_factor(ky,kz,delta)*_get_shear_factor(ky,kz,delta))
 
         # 2nd order displacements
-        self.s2x = _delta_to_s(self.kx,self.delta2)
-        self.s2y = _delta_to_s(self.ky,self.delta2)
-        self.s2z = _delta_to_s(self.kz,self.delta2)
+        self.s2x = _delta_to_s(kx,delta2)
+        self.s2y = _delta_to_s(ky,delta2)
+        self.s2z = _delta_to_s(kz,delta2)
+
+        del delta2; gc.collect()
+
+        # 1st order displacements
+        self.s1x = _delta_to_s(kx,delta)
+        self.s1y = _delta_to_s(ky,delta)
+        self.s1z = _delta_to_s(kz,delta)
+
+        del delta; gc.collect()
+
+
     
 
