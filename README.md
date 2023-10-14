@@ -11,27 +11,34 @@ Currently runs on perlmutter in the [xgsmenv](https://github.com/marcelo-alvarez
 
 Example included here in [scripts/example.py](https://github.com/marcelo-alvarez/lpt4py/blob/master/scripts/example.py) will generate/convolve white noise and calculate 2LPT displacement from an external density contrast (websky), all at 768^3, i.e.:
 ```
-# on Perlmutter at NERSC
+# on Perlmutter at NERSC with Nnodes = [2, 32, 256]
 % module use /global/cfs/cdirs/mp107/exgal/env/xgsmenv/20230615-0.0.1/modulefiles/
 % module load xgsmenv
-% salloc -N 2 -C gpu
-% export XGSMENV_NGPUS=8
-% srun -n 4 python /global/cfs/cdirs/mp107/exgal/users/malvarez/lpt4py/scripts/example.py --N 768 --seed 13579
-[3] noise[-1,-1,-1]=-1.2530277967453003
-[0] shape of noise is (768, 192, 768)
-[0] noise[0,0,0]=-1.6708143949508667
-MPI process 0: 1.338984 sec for noise generation
+% salloc -N Nnodes -C gpu
+% export XGSMENV_NGPUS=4*N
+% srun -n   8  python lpt4py/scripts/example.py --N 2048 --seed 13579 --ityp delta
+ 4.9 sec for noise generation
+12.4 sec for noise convolution
+91.2 sec for 2LPT
 
-[0] shape of delta is (768, 192, 768)
-[0] delta[0,0,0]=-1.6708143949508667
-[3] delta[-1,-1,-1]=-1.253028154373169
-MPI process 0: 2.544447 sec for noise convolution
+% srun -n 128  python lpt4py/scripts/example.py --N 4096 --seed 13579 --ityp delta
+ 5.9 sec for noise generation
+18.2 sec for noise convolution
+96.5 sec for 2LPT
 
-[0] sx1[0,0,0]=5.488100766589582
-[0] sy1[0,0,0]=6.761213949848777
-[0] sz1[0,0,0]=4.207604505677209
-[0] sx2[0,0,0]=0.8204334739641417
-[0] sy2[0,0,0]=-0.9351435481275336
-[0] sz2[0,0,0]=0.4561066162034884
-MPI process 0: 9.779000 sec for 2LPT
+% srun -n 1024 python lpt4py/scripts/example.py --N 8192 --seed 13579 --ityp delta
+ 28.3 sec for noise generation 
+ 80.0 sec for noise convolution
+155.7 sec for 2LPT
+```
+implying the following scalings:
+```
+===============================================================
+    N  Nodes  GPUs Wall time  GPU hours  Node hours  Node hours 
+                       (sec)                         (N/8192)^3
+===============================================================
+
+ 2048      2     8       109       0.24        0.06         3.9
+ 4096     32   128       121        4.3         1.1         8.6
+ 8192    256  1024       264         75          19          19      
 ```
