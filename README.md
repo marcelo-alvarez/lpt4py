@@ -15,7 +15,7 @@ Example included here in [scripts/example.py](https://github.com/marcelo-alvarez
 % module use /global/cfs/cdirs/mp107/exgal/env/xgsmenv/20231013-0.0.0/modulefiles/
 % module load xgsmenv
 % salloc -N Nnodes -C gpu
-% export XGSMENV_NGPUS=4*N
+% export XGSMENV_NGPUS=4*Nnodes
 % srun -n   8  python lpt4py/scripts/example.py --N 2048 --seed 13579 --ityp delta
  4.9 sec for noise generation
 12.4 sec for noise convolution
