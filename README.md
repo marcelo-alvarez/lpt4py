@@ -2,14 +2,14 @@
 Massively parallel GPU-enabled initial conditions and Lagrangian perturbation theory in Python using [jax.]numpy.
 
 ## Installation
-1. git clone https://github.com/xgskyhub/lpt4py.git
+1. git clone https://github.com/exgalsky/lpt4py.git
 2. cd lpt4py
 3. pip install .
 
 ## Running
-Currently runs on perlmutter in the [xgsmenv](https://github.com/xgskyhub/xgsmenv) enviroment.
+Currently runs on perlmutter in the [xgsmenv](https://github.com/exgalsky/xgsmenv) enviroment.
 
-Example included here in [scripts/example.py](https://github.com/xgskyhub/lpt4py/blob/master/scripts/example.py) will generate/convolve white noise and calculate 2LPT displacement from an external density contrast (websky), all at 768^3, i.e.:
+Example included here in [scripts/example.py](https://github.com/exgalsky/lpt4py/blob/master/scripts/example.py) will generate/convolve white noise and calculate 2LPT displacement from an external density contrast (websky), all at 768^3, i.e.:
 ```
 # on Perlmutter at NERSC with Nnodes = [2, 32, 256]
 % module use /global/cfs/cdirs/mp107/exgal/env/xgsmenv/20231013-0.0.0/modulefiles/
