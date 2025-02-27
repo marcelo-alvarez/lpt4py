@@ -36,12 +36,12 @@ def _profiletime(task_tag, step, times, parallel=False, host_id=0):
 dN = 128
 dseed = 13579
 dinfile = "__noise__"
-dparallel = True
 parser = argparse.ArgumentParser(description='Commandline interface to lpt4py example')
 parser.add_argument('--N',     type=int, help=f'grid dimention [default = {dN}]', default=dN)
 parser.add_argument('--seed',  type=int, help=f'noise with random seed when infile = "{dinfile}" [default = {dseed}]',  default=dseed)
 parser.add_argument('--infile',type=str, help=f'lpt input filename [default = "{dinfile}"]',  default=dinfile)
-parser.add_argument('--parallel',type=bool, default=dparallel)
+parser.add_argument('--parallel', action=argparse.BooleanOptionalAction)
+parser.set_defaults(parallel=True)
 
 args = parser.parse_args()
 
@@ -54,19 +54,18 @@ if parallel:
     jax.distributed.initialize()
     host_id = jax.process_index()
 else:
-    parallel = False
     host_id = 0
-print(f"parallel is {parallel}")
-if infile == dinfile:
-    box = lpt.Box(N=N,parallel=parallel,delta=None,seed=seed)
-else:
-    box = lpt.Box(N=N,parallel=parallel,delta=infile)
-
+print(f"parallel: {parallel}")
 times = _profiletime(None, 'initialization', times, parallel, host_id)
 
 # LPT displacements
+nrun=5
+box = lpt.Box(N=N,parallel=parallel,delta=None,seeds=[(seed+i) for i in range(nrun)])
 box.slpt()
-times = _profiletime(None, '2LPT', times, parallel, host_id)
+times = _profiletime(None, 'first 2LPT', times, parallel, host_id)
+for i in range(5):
+    box.slpt()
+    times = _profiletime(None, '2LPT', times, parallel, host_id)
 
 # LPT displacements are now in
 #   cube.s1x

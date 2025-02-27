@@ -16,8 +16,10 @@ class Box:
         self.Lbox     = kwargs.get('Lbox',7700.0)
         self.parallel = kwargs.get('parallel',False)
         self.nlpt     = kwargs.get('nlpt',2)
-        self.seed     = kwargs.get('seed',13579)
+        self.seeds    = kwargs.get('seeds',[13579])
         self.delta    = kwargs.get('delta',None)
+
+        self.iter = 0
 
         self.dk  = 2*jnp.pi/self.Lbox
         self.d3k = self.dk * self.dk * self.dk
@@ -33,7 +35,7 @@ class Box:
         self.start = 0
         self.end   = self.N
 
-        # needed for running on CPU with a signle process
+        # needed for running on CPU with a single process
         self.ngpus   = 1        
         self.host_id = 0
 
@@ -114,19 +116,21 @@ class Box:
 
         # if type of delta is None or string, generate or read in, respectively, delta in 
         # config space; otherwise assume delta already contains delta in config space
-        delta = self.delta
-        if delta is None:
+        if self.delta is None:
             # by default use random white noise
-            delta = rnd.normal(rnd.PRNGKey(self.seed), dtype=jnp.float32, shape=self.rshape_local)
-        elif isinstance(delta, str):
+            seed = self.seeds[self.iter%len(self.seeds)]
+            self.iter += 1
+            delta = rnd.normal(rnd.PRNGKey(seed), dtype=jnp.float32, shape=self.rshape_local)
+        elif isinstance(self.delta, str):
             import numpy as np
             # delta from external file
-            delta = jnp.asarray(np.fromfile(delta,dtype=jnp.float32,count=self.N*self.N*self.N))
+            delta = jnp.asarray(np.fromfile(self.delta,dtype=jnp.float32,count=self.N*self.N*self.N))
             delta = jnp.reshape(delta,self.rshape)
             delta = delta[:,self.start:self.end,:]
+        else:
+            delta = jnp.copy(self.delta)
 
         # FT of delta
-        self.delta = jnp.copy(delta)
         delta = mfft.fft(delta)
 
         # Definitions used for LPT
