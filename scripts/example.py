@@ -55,12 +55,12 @@ if parallel:
     host_id = jax.process_index()
 else:
     host_id = 0
-print(f"parallel: {parallel}")
+
 times = _profiletime(None, 'initialization', times, parallel, host_id)
 
 # LPT displacements
 nrun=5
-box = lpt.Box(N=N,parallel=parallel,delta=None,seeds=[(seed+i) for i in range(nrun)])
+box = lpt.Box(N=N,parallel=parallel,seeds=[(seed+i) for i in range(nrun)])
 box.slpt()
 times = _profiletime(None, 'first 2LPT', times, parallel, host_id)
 for i in range(5):
