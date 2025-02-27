@@ -30,7 +30,6 @@ def _profiletime(task_tag, step, times, parallel=False, host_id=0):
         myprint(f'{task_tag}: {dt:.6f} sec for {step}')
     else:
         myprint(f'{dt:.6f} sec for {step}')
-    myprint("")
 
     return times
 
