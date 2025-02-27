@@ -1,4 +1,0 @@
-#!/bin/bash
-
-# make this location searched first for this package
-export PYTHONPATH=$PWD:$PYTHONPATH
